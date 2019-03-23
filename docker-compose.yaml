@@ -1,0 +1,11 @@
+version: '2'
+services:
+  plan:
+    network_mode: "host"
+    restart: "always"
+    build: .
+    image: config-server
+    volumes:
+      - /security:/security
+    environment:
+      TZ: "Europe/Amsterdam"
