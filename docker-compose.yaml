@@ -3,7 +3,8 @@ services:
   config:
     network_mode: "host"
     restart: "always"
-    build: .
+    build: 
+      context: .
       args:
         ENCRYPT_KEY: ${ENCRYPT_KEY}
     image: config-server
