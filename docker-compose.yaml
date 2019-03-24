@@ -3,12 +3,10 @@ services:
   config:
     network_mode: "host"
     restart: "always"
-    build: 
-      context: .
-      args:
-        ENCRYPT_KEY: ${ENCRYPT_KEY}
+    build: .
     image: config-server
     volumes:
       - /security:/security
     environment:
       TZ: "Europe/Amsterdam"
+      ENCRYPT_KEY: ${ENCRYPT_KEY}
