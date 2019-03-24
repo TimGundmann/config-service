@@ -1,13 +1,13 @@
 version: '2'
 services:
-  plan:
+  config:
     network_mode: "host"
     restart: "always"
     build: .
+      args:
+        ENCRYPT_KEY: ${ENCRYPT_KEY}
     image: config-server
     volumes:
       - /security:/security
     environment:
       TZ: "Europe/Amsterdam"
-    args:
-        - ENCRYPT_KEY=${ENCRYPT_KEY}
