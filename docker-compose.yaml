@@ -9,3 +9,5 @@ services:
       - /security:/security
     environment:
       TZ: "Europe/Amsterdam"
+    args:
+        - ENCRYPT_KEY=${ENCRYPT_KEY}
