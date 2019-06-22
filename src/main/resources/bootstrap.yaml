@@ -12,3 +12,15 @@ spring:
             server:
                 git:
                     uri: https://github.com/TimGundmann/gundmann-config
+    boot:
+        admin:
+            client:
+                instance:
+                    management-base-url: http://192.168.1.100:5678
+                    service-url: http://192.168.1.100:5678
+
+management:
+    endpoints:
+     web:
+        exposure:
+            include: '*'
