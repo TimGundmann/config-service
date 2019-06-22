@@ -17,7 +17,7 @@ spring:
             client:
                 username: tim
                 password: '{cipher}5930ce1dd8cff9d0fe9002ea488964786df68ecc021528ad6af46617da54c98c'
-                url: ${dk.gundmann.host.ip}:2222
+                url: http://192.168.1.100:2222
                 instance:
                     management-base-url: http://192.168.1.100:5678
                     service-url: http://192.168.1.100:5678
