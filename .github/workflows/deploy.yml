@@ -47,4 +47,4 @@ jobs:
             docker load < /tmp/config.tar.gz
             docker stop config || true
             docker rm config || true
-            docker run -d --name config -p 5678:5678 -v $HOME/config/h2:/data/h2 config:latest
+            docker run -d --name config -p 5678:5678 config:latest
