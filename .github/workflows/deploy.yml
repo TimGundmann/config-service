@@ -23,10 +23,10 @@ jobs:
         run: mvn clean package -DskipTests
 
       - name: Build Docker Image
-        run: docker build -t config-service:latest .
+        run: docker build -t config-server:latest .
 
       - name: Save Docker Image to File
-        run: docker save config-service:latest | gzip > config-service.tar.gz
+        run: docker save config-server:latest | gzip > config-server.tar.gz
 
       - name: Copy Image to Remote Server
         uses: appleboy/scp-action@v0.1.7
@@ -34,7 +34,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          source: "config-service.tar.gz"
+          source: "config-server.tar.gz"
           target: "/tmp"
 
       - name: Deploy on Remote Server
@@ -44,7 +44,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            docker load < /tmp/config-service.tar.gz
-            docker stop config-service || true
-            docker rm config-service || true
-            docker run -d --name config-service -p 5678:5678 config-service:latest
+            docker load < /tmp/config-server.tar.gz
+            docker stop config-server || true
+            docker rm config-server || true
+            docker run -d --name config-server -p 5678:5678 config-server:latest

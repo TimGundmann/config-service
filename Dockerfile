@@ -1,4 +1,4 @@
-FROM openjdk:10.0.2-13-jre-sid
+FROM eclipse-temurin:23-jdk-alpine
 
 COPY target/config-server.jar /app/config-server.jar
 
