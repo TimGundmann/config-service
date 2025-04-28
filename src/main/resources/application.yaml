@@ -22,6 +22,9 @@ spring:
     #                 management-base-url: http://192.168.1.100:5678
     #                 service-url: http://192.168.1.100:5678
 
+encrypt:
+    key: YcDAQ2ZVzEQDtG3cwb9WqevM5kYVwUxoAfXMjtbJpYc=
+
 management:
     endpoints:
         web:
