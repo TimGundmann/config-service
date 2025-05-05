@@ -50,10 +50,10 @@ jobs:
             docker load < /tmp/config-server.tar.gz
             docker stop config-server || true
             docker rm config-server || true
-            docker run -d \ 
+            docker run -d \
               --network gundmann \
               --name config-server \
               -e GITHUB_USERNAME=$THE_GITHUB_USERNAME \
               -e GITHUB_TOKEN=$THE_GITHUB_TOKEN \
-              -p 127.0.0.1:5678:5678 \ 
+              -p 127.0.0.1:5678:5678 \
               config-server:latest
