@@ -8,7 +8,9 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-
+    env:
+      GITHUB_USERNAME: ${{ secrets.THE_GITHUB_USERNAME }}
+      GITHUB_TOKEN: ${{ secrets.THE_GITHUB_TOKEN }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
@@ -43,8 +45,15 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          envs: THE_GITHUB_USERNAME,THE_GITHUB_TOKEN
           script: |
             docker load < /tmp/config-server.tar.gz
             docker stop config-server || true
             docker rm config-server || true
-            docker run -d --network gundmann --name config-server -p 127.0.0.1:5678:5678 config-server:latest
+            docker run -d \ 
+              --network gundmann \
+              --name config-server \
+              -e GITHUB_USERNAME=$THE_GITHUB_USERNAME \
+              -e GITHUB_TOKEN=$THE_GITHUB_TOKEN \
+              -p 127.0.0.1:5678:5678 \ 
+              config-server:latest

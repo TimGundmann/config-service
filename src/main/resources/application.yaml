@@ -12,6 +12,9 @@ spring:
             server:
                 git:
                     uri: https://github.com/TimGundmann/gundmann-config
+                    username: ${GITHUB_USERNAME}
+                    password: ${GITHUB_TOKEN}
+
     # boot:
     #     admin:
     #         client:
