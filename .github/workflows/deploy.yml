@@ -47,4 +47,4 @@ jobs:
             docker load < /tmp/config-server.tar.gz
             docker stop config-server || true
             docker rm config-server || true
-            docker run -d --name config-server -p 5678:5678 config-server:latest
+            docker run -d --name config-server -p 127.0.0.1:5678:5678 config-server:latest
