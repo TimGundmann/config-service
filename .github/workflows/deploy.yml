@@ -51,7 +51,7 @@ jobs:
             docker stop config-server || true
             docker rm config-server || true
             docker run -d \
-              --network gundmann \
+              --network supabase_default \
               --name config-server \
               -e GITHUB_USERNAME=$GITHUB_USERNAME \
               -e GITHUB_TOKEN=$GITHUB_TOKEN \
