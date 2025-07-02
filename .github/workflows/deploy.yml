@@ -51,6 +51,7 @@ jobs:
             docker stop config-server || true
             docker rm config-server || true
             docker run -d \
+              --restart=unless-stopped \
               --network supabase_default \
               --name config-server \
               -e GITHUB_USERNAME=$GITHUB_USERNAME \
