@@ -46,6 +46,16 @@ class BlueGreenTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             bg.environment_overrides(['TOKEN=secret\nINJECTED=value'], [])
 
+    def test_snap_environment_copy_is_private_and_removed_on_failure(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(bg.Path, 'home', return_value=Path(directory)):
+            with self.assertRaises(RuntimeError):
+                with bg.docker_environment('TOKEN=secret\n') as path:
+                    self.assertEqual(path.read_text(), 'TOKEN=secret\n')
+                    self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+                    self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
+                    raise RuntimeError('Docker startup rejected')
+            self.assertFalse(path.exists())
+
     def test_failed_switch_restores_previous_configuration(self):
         with tempfile.TemporaryDirectory() as directory:
             deployment = bg.Deployment('bff-service', Path(directory))
