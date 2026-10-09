@@ -323,6 +323,9 @@ class Deployment:
         if '-Xmx' not in options and 'MaxRAMPercentage' not in options:
             environment['JAVA_TOOL_OPTIONS'] = (options + ' -XX:MaxRAMPercentage=70.0').strip()
         if self.service != 'config-server':
+            # Environment imports resolve before profile-specific YAML. Enable
+            # the resolver at the same early stage as its configserver import.
+            environment['SPRING_CLOUD_CONFIG_ENABLED'] = 'true'
             environment['SPRING_CONFIG_IMPORT'] = 'configserver:http://knitty-config-router:5678'
         else:
             for name in ['GITHUB_USERNAME', 'GITHUB_TOKEN']:

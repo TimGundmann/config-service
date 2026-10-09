@@ -101,6 +101,16 @@ class BlueGreenTests(unittest.TestCase):
                  patch.object(bg, 'command', side_effect=['nginx: worker process', '1']):
                 self.assertFalse(deployment.drained('pattern-service'))
 
+    def test_early_config_import_enables_the_config_client_resolver(self):
+        with tempfile.TemporaryDirectory() as directory:
+            deployment = bg.Deployment('bff-service', Path(directory))
+            deployment.env_path.parent.mkdir(parents=True)
+            deployment.env_path.write_text('EXISTING=value\n')
+            deployment.candidate_environment()
+            environment=dict(line.split('=',1) for line in deployment.env_path.read_text().splitlines())
+            self.assertEqual(environment['SPRING_CLOUD_CONFIG_ENABLED'], 'true')
+            self.assertEqual(environment['SPRING_CONFIG_IMPORT'], 'configserver:http://knitty-config-router:5678')
+
     def test_unstable_new_route_is_rejected(self):
         with patch.object(bg, 'probe', return_value=False), patch.object(bg.time, 'sleep'):
             with self.assertRaises(RuntimeError):
