@@ -312,6 +312,7 @@ class Deployment:
         atomic_write(self.env_path, ''.join(key + '=' + value + '\n' for key, value in environment.items()))
 
     def deploy(self, image):
+        self.keep_candidate = False
         validate_image(self.service, image)
         if not (self.root / 'host-routes-ready').exists():
             raise RuntimeError('Activate the reviewed host Nginx routing before enabling these workflows')

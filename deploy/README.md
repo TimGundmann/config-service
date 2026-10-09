@@ -22,6 +22,11 @@ On failure it restores the host configurations. Refresh fingerprints after any
 intentional host configuration change. Do not create the readiness marker by
 hand. Keep the existing containers until host Nginx has finished draining.
 
+Merge the central BFF configuration first, then deploy config-server and BFF.
+Deploy user, newsletter and pattern only after BFF is using the stable router
+hostnames. This avoids relying on old Java clients refreshing cached legacy
+container addresses during the initial migration.
+
 ## Releases and rollback
 
 PRs build and test the application and controller without deploying. Pushes to
@@ -63,3 +68,6 @@ recovery. `python3 deploy/integration_test.py` in config-service runs isolated
 Docker fixtures, continuous requests, a slow in-flight request, two releases,
 an unhealthy candidate and rollback. It does not switch production services.
 The fixture directory must be under the user's home for Snap Docker access.
+
+References: [Nginx configuration reload](https://nginx.org/en/docs/control.html)
+and [Spring Boot graceful shutdown](https://docs.spring.io/spring-boot/3.5/reference/web/graceful-shutdown.html).
