@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Blue/green deployment for the five KnittyNetwork application services."""
 import argparse
+from contextlib import contextmanager
 import fcntl
 import ipaddress
 import json
@@ -71,6 +72,25 @@ def atomic_write(path, content, mode=0o600):
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+@contextmanager
+def docker_environment(content):
+    # Snap Docker cannot read hidden home paths. Keep a private, short-lived
+    # copy in an accessible directory, rather than putting secrets in argv.
+    directory = Path.home() / 'knitty-blue-green-runtime'
+    if directory.is_symlink():
+        raise RuntimeError('Runtime environment directory must not be a symlink')
+    directory.mkdir(mode=0o700, exist_ok=True)
+    os.chmod(directory, 0o700)
+    fd, temporary = tempfile.mkstemp(dir=directory, prefix='environment-')
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'w') as stream:
+            stream.write(content)
+        yield Path(temporary)
+    finally:
+        os.unlink(temporary)
 
 
 def environment_overrides(container_env, image_env):
@@ -342,11 +362,11 @@ class Deployment:
         self.candidate_environment()
         arguments = ['docker', 'run', '-d', '--name', candidate_name, '--restart', 'unless-stopped',
                      '--network', NETWORK, '--label', 'org.knitty.bluegreen.service=' + self.service,
-                     '--memory', self.memory, '--stop-timeout', '320', '--env-file', str(self.env_path)]
+                     '--memory', self.memory, '--stop-timeout', '320']
         for mount in state['mounts']:
             arguments += ['-v', mount['Source'] + ':' + mount['Destination'] + (':ro' if not mount['RW'] else '')]
-        arguments.append(image)
-        command(arguments)
+        with docker_environment(self.env_path.read_text()) as environment_file:
+            command(arguments + ['--env-file', str(environment_file), image])
         try:
             candidate = self.backend(candidate_name)
             candidate.update({'color': color, 'source': revision})
