@@ -95,6 +95,8 @@ ThreadingHTTPServer(('0.0.0.0',18000), Handler).serve_forever()
             except RuntimeError:
                 pass
             assert deployment.state() == before, 'Failed release changed state'
+            failed = bg.command(['docker', 'ps', '-a', '--filter', 'name=^/' + SERVICE + '-green-' + '3' * 12 + '$', '--format', '{{.Names}}'])
+            assert not failed, 'Failed candidate was not removed'
             assert response()['version'] == '2' * 40
             deployment.deploy(SERVICE + ':' + '4' * 40)
             assert response()['version'] == '4' * 40
