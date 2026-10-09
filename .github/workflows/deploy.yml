@@ -76,7 +76,7 @@ jobs:
             set -eu
             release_dir='/tmp/knitty-deploy/config-server/${{ github.sha }}'
             trap 'rm -f -- "$release_dir/image.tar.gz"' EXIT
-            docker load --input "$release_dir/image.tar.gz"
+            docker load < "$release_dir/image.tar.gz"
             python3 "$release_dir/deploy/blue_green.py" deploy --service config-server --image config-server:${{ github.sha }}
       - name: Restore previous healthy release
         if: github.event_name != 'pull_request' && inputs.operation == 'rollback'
