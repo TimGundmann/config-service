@@ -1,60 +1,91 @@
-name: Build Spring Boot App and Deploy Docker Image to Linux
+name: Build and deploy config-server with blue green
 
 on:
   push:
-    branches:
-      - master
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Deploy this commit or roll back to the previous healthy release
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+
+concurrency:
+  group: deploy-config-server-${{ github.event.pull_request.number || 'production' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       GITHUB_USERNAME: ${{ secrets.THE_GITHUB_USERNAME }}
       GITHUB_TOKEN: ${{ secrets.THE_GITHUB_TOKEN }}
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Set up JDK 23
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-java@v4
+        if: inputs.operation != 'rollback'
         with:
-          distribution: 'temurin'
-          java-version: 23
-
-      - name: Build Spring Boot App
-        run: mvn clean package -DskipTests
-
-      - name: Build Docker Image
-        run: docker build -t config-server:latest .
-
-      - name: Save Docker Image to File
-        run: docker save config-server:latest | gzip > config-server.tar.gz
-
-      - name: Copy Image to Remote Server
-        uses: appleboy/scp-action@v0.1.7
+          distribution: temurin
+          java-version: '23'
+      - name: Test deployment safety
+        run: python3 -m unittest discover -s deploy/tests
+      - name: Build and test application
+        if: inputs.operation != 'rollback'
+        run: |
+          mvn -B verify
+      - name: Build immutable Docker image
+        if: inputs.operation != 'rollback'
+        run: |
+          docker build -t config-server:${{ github.sha }} .
+          docker save config-server:${{ github.sha }} | gzip > image.tar.gz
+      - name: Transfer release and deployment script
+        if: github.event_name != 'pull_request' && inputs.operation != 'rollback'
+        uses: appleboy/scp-action@v1.0.0
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
-          source: "config-server.tar.gz"
-          target: "/tmp"
-
-      - name: Deploy on Remote Server
+          source: 'image.tar.gz,deploy/blue_green.py'
+          target: '/tmp/knitty-deploy/config-server/${{ github.sha }}'
+      - name: Transfer rollback controller
+        if: github.event_name != 'pull_request' && inputs.operation == 'rollback'
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          source: 'deploy/blue_green.py'
+          target: '/tmp/knitty-deploy/config-server/${{ github.sha }}'
+      - name: Switch healthy blue green release
+        if: github.event_name != 'pull_request' && inputs.operation != 'rollback'
         uses: appleboy/ssh-action@v1.0.0
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           envs: GITHUB_USERNAME,GITHUB_TOKEN
+          command_timeout: 40m
           script: |
-            docker load < /tmp/config-server.tar.gz
-            docker stop config-server || true
-            docker rm config-server || true
-            docker run -d \
-              --restart=unless-stopped \
-              --network supabase_default \
-              --name config-server \
-              -e GITHUB_USERNAME=$GITHUB_USERNAME \
-              -e GITHUB_TOKEN=$GITHUB_TOKEN \
-              -p 127.0.0.1:5678:5678 \
-              config-server:latest
+            set -eu
+            release_dir='/tmp/knitty-deploy/config-server/${{ github.sha }}'
+            trap 'rm -f -- "$release_dir/image.tar.gz"' EXIT
+            docker load --input "$release_dir/image.tar.gz"
+            python3 "$release_dir/deploy/blue_green.py" deploy --service config-server --image config-server:${{ github.sha }}
+      - name: Restore previous healthy release
+        if: github.event_name != 'pull_request' && inputs.operation == 'rollback'
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          command_timeout: 40m
+          script: |
+            set -eu
+            python3 '/tmp/knitty-deploy/config-server/${{ github.sha }}/deploy/blue_green.py' rollback --service config-server
