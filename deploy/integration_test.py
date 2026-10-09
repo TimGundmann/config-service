@@ -20,6 +20,8 @@ bg.SERVICES[SERVICE] = (18000, 19800, '/health', '128m', ROUTER)
 
 real_wait = bg.wait_healthy
 bg.wait_healthy = lambda url, expected_backend=None, timeout=300: real_wait(url, expected_backend, min(timeout, 15))
+real_backend_wait = bg.Deployment.wait_backend_healthy
+bg.Deployment.wait_backend_healthy = lambda self, container, timeout=300: real_backend_wait(self, container, min(timeout,15))
 failures = []
 requests = []
 stop = threading.Event()

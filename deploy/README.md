@@ -36,6 +36,11 @@ the router and observes health for 15 seconds before committing state. A failed
 candidate keeps production on the old release. Config-server additionally must
 fetch application configuration from its Git backend.
 
+Readiness runs with `docker exec` inside the exact named candidate and checks
+that its process has not restarted during the probe. A bridge IP can be reused
+by another container after a crash, so an IP response must never authorize a
+traffic switch. The Alpine images provide BusyBox wget for this private probe.
+
 One repository workflow runs at a time, and a server lock serializes deployments
 across all five services to keep memory usage bounded. Runtime overrides and
 state are stored privately in `~/.local/share/knitty-blue-green`; secret values

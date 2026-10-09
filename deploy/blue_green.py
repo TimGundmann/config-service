@@ -209,8 +209,39 @@ class Deployment:
         return {'container': container, 'backend': container_ip(data) if container == self.service else container,
                 'image': data['Image']}
 
-    def backend_health(self, container):
-        return f'http://{container_ip(inspect(container))}:{self.port}{self.health_path(container)}'
+    def backend_document(self, container, path):
+        if not valid_container(self.service, container):
+            raise ValueError('Invalid healthcheck container')
+        # A restarting container releases its bridge IP. Probe inside the
+        # named container so another container reusing that IP cannot pass.
+        return json.loads(command(['docker', 'exec', container, 'wget', '-T', '5', '-q', '-O', '-',
+                                   f'http://127.0.0.1:{self.port}{path}']))
+
+    def backend_probe(self, container):
+        try:
+            before = inspect(container)
+            if not before['State']['Running']:
+                return False
+            path = self.health_path(container)
+            payload = self.backend_document(container, path)
+            after = inspect(container)
+            stable = (after['State']['Running'] and before['State']['StartedAt'] == after['State']['StartedAt']
+                      and before['RestartCount'] == after['RestartCount'])
+            healthy = (payload.get('name') == 'bff' and bool(payload.get('propertySources'))
+                       if path == '/bff/prod' else payload.get('status') == 'UP')
+            return stable and healthy
+        except (RuntimeError, ValueError, KeyError):
+            return False
+
+    def wait_backend_healthy(self, container, timeout=300):
+        deadline = time.monotonic() + timeout
+        consecutive = 0
+        while time.monotonic() < deadline:
+            consecutive = consecutive + 1 if self.backend_probe(container) else 0
+            if consecutive >= 3:
+                return
+            time.sleep(1)
+        raise RuntimeError('Named candidate did not become healthy; previous release stays active')
 
     def health_path(self, container):
         return '/bff/prod' if self.service == 'config-server' and container == self.service else self.health
@@ -291,11 +322,9 @@ class Deployment:
             count = command(['docker', 'exec', 'supabase-db', 'psql', '-U', 'postgres', '-d', 'pattern', '-Atc',
                              "SELECT count(*) FROM upload_job WHERE status NOT IN ('COMPLETED', 'FAILED')"])
             return count == '0'
-        url = f'http://{container_ip(inspect(container))}:{self.port}/patterns/actuator/deployment'
         try:
-            with urllib.request.urlopen(url, timeout=5) as response:
-                return json.load(response)['runningUploads'] == 0
-        except (OSError, ValueError, KeyError, urllib.error.URLError):
+            return self.backend_document(container, '/patterns/actuator/deployment')['runningUploads'] == 0
+        except (RuntimeError, ValueError, KeyError):
             return False
 
     def retire(self, container, timeout=30):
@@ -323,6 +352,9 @@ class Deployment:
         if '-Xmx' not in options and 'MaxRAMPercentage' not in options:
             environment['JAVA_TOOL_OPTIONS'] = (options + ' -XX:MaxRAMPercentage=70.0').strip()
         if self.service != 'config-server':
+            # Environment imports resolve before profile-specific YAML. Enable
+            # the resolver at the same early stage as its configserver import.
+            environment['SPRING_CLOUD_CONFIG_ENABLED'] = 'true'
             environment['SPRING_CONFIG_IMPORT'] = 'configserver:http://knitty-config-router:5678'
         else:
             for name in ['GITHUB_USERNAME', 'GITHUB_TOKEN']:
@@ -370,11 +402,10 @@ class Deployment:
         try:
             candidate = self.backend(candidate_name)
             candidate.update({'color': color, 'source': revision})
-            wait_healthy(self.backend_health(candidate_name))
+            self.wait_backend_healthy(candidate_name)
             if self.service == 'config-server':
-                with urllib.request.urlopen(f'http://{container_ip(inspect(candidate_name))}:5678/bff/prod', timeout=30) as response:
-                    if not json.load(response).get('propertySources'):
-                        raise RuntimeError('Config candidate cannot fetch application configuration')
+                if not self.backend_document(candidate_name, '/bff/prod').get('propertySources'):
+                    raise RuntimeError('Config candidate cannot fetch application configuration')
             self.switch(previous, candidate)
             self.keep_candidate = True
             try:
@@ -411,7 +442,7 @@ class Deployment:
             raise RuntimeError('No previous release is available')
         if not inspect(previous['container'])['State']['Running']:
             command(['docker', 'start', previous['container']])
-        wait_healthy(self.backend_health(previous['container']))
+        self.wait_backend_healthy(previous['container'])
         previous = {**previous, **self.backend(previous['container'])}
         self.switch(state['active'], previous)
         try:

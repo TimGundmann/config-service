@@ -86,7 +86,7 @@ class BlueGreenTests(unittest.TestCase):
             with patch.object(deployment, 'state', return_value={'active': active, 'previous': previous}), \
                  patch.object(bg, 'inspect', return_value={'State': {'Running': True}}), \
                  patch.object(bg, 'wait_healthy'), patch.object(bg, 'verify_stable'), \
-                 patch.object(deployment, 'backend_health', return_value='http://test'), \
+                 patch.object(deployment, 'wait_backend_healthy'), \
                  patch.object(deployment, 'backend', return_value={'container': previous['container'], 'backend': 'fresh'}), \
                  patch.object(deployment, 'switch'), patch.object(deployment, 'retire'), \
                  patch.object(deployment, 'save') as save:
@@ -101,10 +101,39 @@ class BlueGreenTests(unittest.TestCase):
                  patch.object(bg, 'command', side_effect=['nginx: worker process', '1']):
                 self.assertFalse(deployment.drained('pattern-service'))
 
+    def test_early_config_import_enables_the_config_client_resolver(self):
+        with tempfile.TemporaryDirectory() as directory:
+            deployment = bg.Deployment('bff-service', Path(directory))
+            deployment.env_path.parent.mkdir(parents=True)
+            deployment.env_path.write_text('EXISTING=value\n')
+            deployment.candidate_environment()
+            environment=dict(line.split('=',1) for line in deployment.env_path.read_text().splitlines())
+            self.assertEqual(environment['SPRING_CLOUD_CONFIG_ENABLED'], 'true')
+            self.assertEqual(environment['SPRING_CONFIG_IMPORT'], 'configserver:http://knitty-config-router:5678')
+
     def test_unstable_new_route_is_rejected(self):
         with patch.object(bg, 'probe', return_value=False), patch.object(bg.time, 'sleep'):
             with self.assertRaises(RuntimeError):
                 bg.verify_stable('http://test', 'bff-service-blue')
+
+    def test_reused_healthy_ip_cannot_validate_a_restarting_candidate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            deployment = bg.Deployment('bff-service', Path(directory))
+            state = {'State': {'Running':True, 'StartedAt':'first'}, 'RestartCount':0}
+            with patch.object(bg, 'inspect', return_value=state), \
+                 patch.object(bg, 'probe', return_value=True), \
+                 patch.object(bg, 'command', side_effect=RuntimeError('Named container is restarting')) as command:
+                self.assertFalse(deployment.backend_probe('bff-service-blue'))
+            self.assertEqual(command.call_args.args[0][:3], ['docker','exec','bff-service-blue'])
+
+    def test_restart_during_a_successful_health_response_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            deployment = bg.Deployment('bff-service', Path(directory))
+            before = {'State': {'Running':True,'StartedAt':'first'},'RestartCount':0}
+            after = {'State': {'Running':True,'StartedAt':'second'},'RestartCount':1}
+            with patch.object(bg,'inspect',side_effect=[before,after]), \
+                 patch.object(deployment,'backend_document',return_value={'status':'UP'}):
+                self.assertFalse(deployment.backend_probe('bff-service-blue'))
 
 
 if __name__ == '__main__':
