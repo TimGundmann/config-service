@@ -76,3 +76,13 @@ The fixture directory must be under the user's home for Snap Docker access.
 
 References: [Nginx configuration reload](https://nginx.org/en/docs/control.html)
 and [Spring Boot graceful shutdown](https://docs.spring.io/spring-boot/3.5/reference/web/graceful-shutdown.html).
+
+## Docker log rotation
+
+Application containers and new routers use json-file logging with max-size=10m
+and max-file=3. Docker rotates logs automatically; no cleanup cronjob is needed.
+Redeploying the same image replaces an active container that lacks these limits
+through the normal health checks and draining. A healthy active release that
+already has these limits stays running. Existing routers and Compose services
+need recreation with equivalent logging options.
+
