@@ -36,6 +36,8 @@ jobs:
           java-version: '23'
       - name: Test deployment safety
         run: python3 -m unittest discover -s deploy/tests
+      - name: Test log evidence and privacy
+        run: python3 -m unittest discover -s monitoring
       - name: Build and test application
         if: inputs.operation != 'rollback'
         run: |
