@@ -270,6 +270,7 @@ class Deployment:
         if any(mount['Destination'] != '/security' for mount in mounts):
             raise RuntimeError('Unexpected mount; review it before bootstrap')
         command(['docker', 'run', '-d', '--name', self.router, '--restart', 'unless-stopped',
+                 '--log-driver', 'json-file', '--log-opt', 'max-size=10m', '--log-opt', 'max-file=3',
                  '--network', NETWORK, '--entrypoint', '/usr/sbin/nginx',
                  '--user', '101:101', '--cap-drop', 'ALL',
                  '--memory', '128m', '--read-only',
@@ -373,8 +374,11 @@ class Deployment:
         wait_healthy(self.router_health_for(previous['container']), previous['container'], timeout=30)
         revision = image.split(':', 1)[1]
         if previous.get('source') == revision:
-            print(self.service + ': this commit is already healthy and active')
-            return
+            logging = inspect(previous['container'])['HostConfig']['LogConfig']
+            if (logging['Type'] == 'json-file' and logging['Config'].get('max-size') == '10m'
+                    and logging['Config'].get('max-file') == '3'):
+                print(self.service + ': this commit is already healthy and active with log rotation')
+                return
         color = 'green' if previous.get('color') == 'blue' else 'blue'
         candidate_name = self.service + '-' + color + '-' + revision[:12]
         listed = command(['docker', 'ps', '-a', '--filter', 'name=^/' + candidate_name + '$', '--format', '{{.Names}}'])
@@ -393,6 +397,7 @@ class Deployment:
             raise RuntimeError('Not enough spare memory to warm the candidate safely; active release was kept')
         self.candidate_environment()
         arguments = ['docker', 'run', '-d', '--name', candidate_name, '--restart', 'unless-stopped',
+                     '--log-driver', 'json-file', '--log-opt', 'max-size=10m', '--log-opt', 'max-file=3',
                      '--network', NETWORK, '--label', 'org.knitty.bluegreen.service=' + self.service,
                      '--memory', self.memory, '--stop-timeout', '320']
         for mount in state['mounts']:
