@@ -61,3 +61,26 @@ long traces/context, identity, idempotency, result delivery and failures.
 Changing the collector is a manual maintenance operation with a timestamped
 backup and atomic file replacement. No application is deployed or restarted.
 The extension never merges PRs, invokes deployment, restarts or cleans up.
+
+## Maintained operations sources
+
+The current collector and regression tests include the 1 November 2026 log-only
+notification wording. See [OPERATIONS.md](OPERATIONS.md) for the installed
+monitor, log rotation and port hardening history. The maintenance scripts in this
+directory are archived operational tools: they are never imported or executed by
+the application deployment or the hourly collector. In particular,
+`restrict_supabase_ports.py`, `install.py` and `enable_schedule.py` act immediately
+when run and require a deliberate server maintenance operation.
+`build_config_server.sh` records a historical pinned deployment; it is not the
+current build command. Do not rerun completed migrations.
+
+The installer requires a bundle containing `incidents.py`, `test_incidents.py`,
+`monitor.py` and `test_monitor.py`; it installs the incident dependencies together
+with the collector before running validation. Existing files retain a `.previous`
+backup. Installation remains a deliberate server maintenance operation.
+
+The application Maven wrapper uses Maven 3.9.12 to satisfy current plugin
+requirements; see https://maven.apache.org/docs/3.9.12/release-notes.html.
+Actuator exposes only health and info over HTTP. The existing encryption key
+requires a separate coordinated runtime migration and rotation; changing it
+without re-encrypting existing config would break decryption.

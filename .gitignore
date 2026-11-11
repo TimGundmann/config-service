@@ -27,3 +27,7 @@ HELP.md
 
 ### VS Code ###
 .vscode/
+
+# Python test output
+__pycache__/
+*.py[cod]

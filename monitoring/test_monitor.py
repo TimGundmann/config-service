@@ -57,3 +57,21 @@ class MonitorTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class LogNotificationTests(unittest.TestCase):
+    def test_log_only_subject_does_not_claim_service_outage(self):
+        self.assertEqual(monitor.alarm_subject({'logs:supabase-pooler': {}}),
+                         '[Knittynetwork] Logadvarsel')
+        self.assertEqual(monitor.alarm_subject({'service:supabase-pooler': {}, 'logs:x': {}}),
+                         '[Knittynetwork] Alarm: problemer fundet')
+        self.assertEqual(monitor.alarm_subject({}), '[Knittynetwork] Kontrol uden fejl')
+
+    def test_recovery_describes_log_window(self):
+        result = monitor.report({}, {'logs:supabase-pooler': {}})
+        self.assertIn('Ingen nye fejlmarkeringer i logs: supabase-pooler', result)
+        self.assertNotIn('Løst siden sidste kontrol: logs:', result)
+
+    def test_rejected_connections_and_real_database_errors_remain_visible(self):
+        lines = ['2026-11-01T09:33:07Z [error] ClientHandler: (ENOIDENTIFIER) no tenant identifier provided',
+                 '2026-11-01T09:34:00Z FATAL database unavailable']
+        self.assertEqual(monitor.log_summary(lines)['count'], 2)

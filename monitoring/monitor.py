@@ -53,6 +53,14 @@ def new_log_lines(lines, since):
         yield line
 
 
+def alarm_subject(issues):
+    if not issues:
+        return '[Knittynetwork] Kontrol uden fejl'
+    if all(key.startswith('logs:') for key in issues):
+        return '[Knittynetwork] Logadvarsel'
+    return '[Knittynetwork] Alarm: problemer fundet'
+
+
 def notification_needed(previous, current):
     if set(previous) != set(current):
         return True
@@ -204,8 +212,12 @@ def report(issues, previous):
     else:
         lines.append('De tidligere registrerede problemer ses ikke længere.')
     recovered = sorted(set(previous) - set(issues))
-    if recovered:
-        lines.append('\nLøst siden sidste kontrol: ' + ', '.join(recovered))
+    recovered_logs = [key[5:] for key in recovered if key.startswith('logs:')]
+    recovered_services = [key for key in recovered if not key.startswith('logs:')]
+    if recovered_logs:
+        lines.append('\nIngen nye fejlmarkeringer i logs: ' + ', '.join(recovered_logs))
+    if recovered_services:
+        lines.append('\nLøst siden sidste kontrol: ' + ', '.join(recovered_services))
     lines.append('\nKontrollen foretager ingen genstart eller oprydning. '
                  'Den kører på serveren og kan derfor ikke selv sende mail ved totalt server- eller netværksnedbrud.')
     return '\n'.join(lines)
@@ -249,7 +261,7 @@ def main():
         save(BASE / 'status.json', {'last_check': now, 'issues': issues, 'mail_ok': None})
         if notify:
             try:
-                send_mail('[Knittynetwork] ' + ('Alarm: problemer fundet' if issues else 'Drift genoprettet'),
+                send_mail(alarm_subject(issues),
                           report(issues, previous))
             except Exception:
                 save(BASE / 'status.json', {'last_check': now, 'issues': issues, 'mail_ok': False})
