@@ -120,6 +120,61 @@ def event_ranges(lines):
     return windows
 
 
+def actionable_log_lines(container, lines, active_release=False, complete=True):
+    """Ignore only known benign bootstrap events in a healthy promoted release.
+
+    Match event time, not collection time: the hourly poll can follow deployment
+    by much more than five minutes. Unknown metadata always preserves evidence.
+    """
+    state = container.get('State', {})
+    if (not active_release or not complete or not state.get('Running')
+            or state.get('Health', {}).get('Status') != 'healthy'
+            or state.get('OOMKilled') or container.get('RestartCount') != 0):
+        return lines
+    try:
+        metadata = identity(container)
+        if not metadata or not metadata['commit']:
+            return lines
+        started = dt.datetime.fromisoformat(state['StartedAt'].replace('Z', '+00:00'))
+        if started.tzinfo is None:
+            return lines
+    except (KeyError, ValueError, TypeError):
+        return lines
+    excluded = set()
+    for _, start, end, _ in event_ranges(lines):
+        stamp = STAMP.match(lines[start])
+        if not stamp:
+            continue
+        try:
+            timestamp = dt.datetime.fromisoformat(stamp.group().strip().replace('Z', '+00:00'))
+            age = (timestamp - started).total_seconds()
+        except ValueError:
+            continue
+        # Same upper bound as blue_green.wait_backend_healthy.
+        if not 0 <= age <= 300:
+            continue
+        core = lines[start:end]
+        body = STAMP.sub('', core[0])
+        if not re.search(r'\b(?:INFO|WARN)\b', body) or any(
+                re.search(r'\b(?:ERROR|FATAL|PANIC|OOM|OutOfMemoryError)\b', line) for line in core):
+            continue
+        exceptions = {name for line in core for name in EXCEPTION.findall(line)}
+        config_fallback = (
+            re.search(r'\bConfigServerConfigDataLoader\s*:', body)
+            and re.search(r'http://localhost:8888(?=[/\s"\']|$)', body)
+            and 'Connection refused' in body
+            and ('org.springframework.web.client.ResourceAccessException' in exceptions
+                 or (not exceptions and 'Could not locate PropertySource' in body))
+            and exceptions <= {'org.springframework.web.client.ResourceAccessException', 'java.net.ConnectException'})
+        optional_validator = (
+            re.search(r'\bOptionalValidatorFactoryBean\s*:', body)
+            and 'no Jakarta Bean Validation provider could be found' in body
+            and exceptions == {'jakarta.validation.NoProviderFoundException'})
+        if config_fallback or optional_validator:
+            excluded.update(range(start, end))
+    return [line for index, line in enumerate(lines) if index not in excluded]
+
+
 def enqueue(directory, metadata, evidence, window):
     core = [item for item in evidence if item.get('role', 'error') == 'error']
     exceptions = [(i, name) for i, line in enumerate(core) for name in line['exceptions']]

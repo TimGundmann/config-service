@@ -14,7 +14,7 @@ import sys
 import tempfile
 import time
 import urllib.request
-from incidents import capture, deliver_reports
+from incidents import actionable_log_lines, capture, deliver_reports
 
 BASE = Path(__file__).resolve().parent
 ERROR = re.compile(r'\b(?:ERROR|FATAL|PANIC|OutOfMemoryError|OOM|[\w.$]+Exception)\b', re.I)
@@ -144,10 +144,13 @@ def collect(config, state, now):
         containers = json.loads(run(['docker', 'inspect', *ids])) if ids else []
         by_name = {v['Name'].lstrip('/'): v for v in containers}
         expected = set(config['containers'])
+        active_releases = set()
         for service in config['releases']:
             try:
                 release = Path.home() / '.local/share/knitty-blue-green' / service / 'state.json'
-                expected.add(json.loads(release.read_text())['active']['container'])
+                active = json.loads(release.read_text())['active']['container']
+                expected.add(active)
+                active_releases.add(active)
             except Exception:
                 issue('check:release:' + service, f'Aktiv release for {service} kunne ikke bestemmes.')
         for name in sorted(expected):
@@ -168,20 +171,21 @@ def collect(config, state, now):
                       count=container['RestartCount'] - previous_restarts)
             try:
                 since = cursors.get(identity, now - 3600)
-                # Stream to a temporary file rather than retaining arbitrary logs in memory.
+                # Bound collection before classifying events for both alert channels.
                 with tempfile.TemporaryFile(mode='w+t') as output:
                     p = subprocess.run(['docker', 'logs', '--tail', '100000', '--timestamps', '--since', str(max(0, since - 60)),
                                         '--until', str(now), name], stdout=output, stderr=output, timeout=60)
                     if p.returncode:
                         raise RuntimeError('logs unavailable')
                     output.seek(0)
-                    summary = log_summary(new_log_lines(output, since))
-                    output.seek(0)
                     capped = sum(1 for _ in output) >= 100000
+                    output.seek(0)
+                    lines = actionable_log_lines(container, output.readlines(),
+                                                 active_release=name in active_releases, complete=not capped)
+                    summary = log_summary(new_log_lines(lines, since))
                     # Queue before advancing the cursor. Retry is idempotent after SMTP failure.
                     if config.get('codex_incidents') and not config.get('_dry_run'):
-                        output.seek(0)
-                        capture(container, output.readlines(), BASE, f'{since}/{now}', complete=not capped)
+                        capture(container, lines, BASE, f'{since}/{now}', complete=not capped)
                 if summary['count']:
                     issues['logs:' + name] = {
                         **summary,
