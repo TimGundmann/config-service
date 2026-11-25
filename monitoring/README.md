@@ -6,6 +6,16 @@ the collection/reporting mechanism. Set `codex_incidents: true` in the existing
 private `config.json` to also enqueue evidence. `--dry-run` never enqueues or
 sends reports. No third-party Python dependency is required.
 
+For the active blue/green release, both error counters and incident capture
+exclude two known bootstrap events: ConfigServerConfigDataLoader's refused
+localhost:8888 fallback (ResourceAccessException), and OptionalValidatorFactoryBean's
+missing Jakarta validation provider (NoProviderFoundException). Exclusion requires
+a full source SHA image tag, running and explicitly healthy container, zero
+restarts, no OOM kill, complete log collection, and an event within 300 seconds
+of container start (the deployment health wait). Unknown nested exceptions,
+ERROR/FATAL events, other endpoints, later runtime events and unhealthy releases
+remain visible. This is not a general deployment maintenance window.
+
 `incidents.py` keeps private atomic JSON cases under the monitor's `incidents/`
 directory, locked together with the existing monitor. Each case includes:
 
